@@ -156,5 +156,3 @@ epoch: 18 | train_loss: 0.4196, train_acc: 0.8000 | time: 19.33s
 epoch: 19 | train_loss: 0.4201, train_acc: 0.8200 | time: 19.51s
 epoch: 20 | train_loss: 0.4076, train_acc: 0.8200 | time: 19.25s
 ```
-
-TODO:  
