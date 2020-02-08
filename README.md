@@ -34,3 +34,127 @@ TODO：
 
 # 1.30
 TextCNN的embedding，可以建立一个动态一个静态  
+
+# 2.8
+增加了完整性检查相关代码，整合了一下cnn和rnn的接口，还需要进一步改进为面向对象形式。  
+RNN训练太慢，应该是模型本身问题，完整性检查如下：
+## TextCNN sanity check
+代码：
+```python
+import random
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+from data_split import hotel_split
+from data_utils import load_htl_datasets, get_sanity_check_dataset
+from models.TextCNN import TextCNN
+from models.RNN import RNN
+from utils import train, num_parameters
+
+
+train_iter, val_iter, test_iter = load_htl_datasets(batch_first=True, 
+                                                    include_length=False,
+                                                    sort_within_batch=None)
+sanity_iter = get_sanity_check_dataset(val_iter.dataset,
+                                       num_examples=50,
+                                       seed=None,
+                                       sort_within_batch=None)
+
+TEXT = sanity_iter.dataset.fields['review']
+model = TextCNN(num_vocab=len(TEXT.vocab), 
+                embed_dim=300, 
+                pad_idx=TEXT.vocab.stoi[TEXT.pad_token],
+                pretrained=None,
+                num_filters=200,
+                filter_sizes=[2, 3, 4, 5], 
+                output_dim=2,
+                dropout=0.5)
+
+optimizer = optim.Adam(model.parameters())
+criterion = nn.CrossEntropyLoss()
+device = torch.device('cpu')
+epochs = 20
+print(len(sanity_iter.dataset))
+print(num_parameters(model))
+train(model, sanity_iter, optimizer, criterion, epochs, device, include_length=False)
+```
+结果：
+```
+50
+3573002
+epoch: 1 | train_loss: 0.8183, train_acc: 0.6000 | time: 7.31s
+epoch: 2 | train_loss: 0.7071, train_acc: 0.6000 | time: 5.75s
+epoch: 3 | train_loss: 0.2090, train_acc: 0.9200 | time: 5.28s
+epoch: 4 | train_loss: 0.2298, train_acc: 0.8800 | time: 6.09s
+epoch: 5 | train_loss: 0.1210, train_acc: 0.9400 | time: 5.47s
+epoch: 6 | train_loss: 0.0550, train_acc: 1.0000 | time: 5.58s
+epoch: 7 | train_loss: 0.0339, train_acc: 1.0000 | time: 5.91s
+epoch: 8 | train_loss: 0.0233, train_acc: 1.0000 | time: 5.39s
+epoch: 9 | train_loss: 0.0250, train_acc: 1.0000 | time: 5.49s
+epoch: 10 | train_loss: 0.0109, train_acc: 1.0000 | time: 5.51s
+epoch: 11 | train_loss: 0.0264, train_acc: 1.0000 | time: 5.73s
+epoch: 12 | train_loss: 0.0137, train_acc: 1.0000 | time: 7.70s
+epoch: 13 | train_loss: 0.0111, train_acc: 1.0000 | time: 6.37s
+epoch: 14 | train_loss: 0.0063, train_acc: 1.0000 | time: 6.79s
+epoch: 15 | train_loss: 0.0032, train_acc: 1.0000 | time: 7.53s
+epoch: 16 | train_loss: 0.0036, train_acc: 1.0000 | time: 5.61s
+epoch: 17 | train_loss: 0.0021, train_acc: 1.0000 | time: 6.65s
+epoch: 18 | train_loss: 0.0026, train_acc: 1.0000 | time: 5.79s
+epoch: 19 | train_loss: 0.0021, train_acc: 1.0000 | time: 5.49s
+epoch: 20 | train_loss: 0.0016, train_acc: 1.0000 | time: 5.30s
+```
+
+## RNN sanity check
+代码：
+```
+train_iter, val_iter, test_iter = load_htl_datasets(batch_first=False, 
+                                                    include_length=True,
+                                                    sort_within_batch=True)
+sanity_iter = get_sanity_check_dataset(val_iter.dataset,
+                                       num_examples=50,
+                                       seed=None,
+                                       sort_within_batch=True)
+
+TEXT = sanity_iter.dataset.fields['review']
+model = RNN(vocab_size=len(TEXT.vocab), 
+            embedding_dim=300, 
+            pad_idx=TEXT.vocab.stoi[TEXT.pad_token], 
+            hidden_dim=100, output_dim=2, dropout=0.5,
+            n_layers=2, bidirectional=True)
+
+optimizer = optim.Adam(model.parameters())
+criterion = nn.CrossEntropyLoss()
+device = torch.device('cpu')
+epochs = 20
+print(len(sanity_iter.dataset))
+print(num_parameters(model))
+train(model, sanity_iter, optimizer, criterion, epochs, device, include_length=True)
+```
+结果：
+```
+50
+3294202
+epoch: 1 | train_loss: 0.6911, train_acc: 0.4800 | time: 20.92s
+epoch: 2 | train_loss: 0.6822, train_acc: 0.6000 | time: 20.51s
+epoch: 3 | train_loss: 0.6644, train_acc: 0.7000 | time: 20.37s
+epoch: 4 | train_loss: 0.6691, train_acc: 0.6400 | time: 20.57s
+epoch: 5 | train_loss: 0.6496, train_acc: 0.7600 | time: 20.51s
+epoch: 6 | train_loss: 0.6333, train_acc: 0.7200 | time: 19.31s
+epoch: 7 | train_loss: 0.6254, train_acc: 0.7400 | time: 20.70s
+epoch: 8 | train_loss: 0.6269, train_acc: 0.7000 | time: 20.24s
+epoch: 9 | train_loss: 0.6023, train_acc: 0.7400 | time: 19.65s
+epoch: 10 | train_loss: 0.5802, train_acc: 0.7800 | time: 19.82s
+epoch: 11 | train_loss: 0.5726, train_acc: 0.7800 | time: 19.24s
+epoch: 12 | train_loss: 0.5629, train_acc: 0.8000 | time: 20.45s
+epoch: 13 | train_loss: 0.5491, train_acc: 0.8000 | time: 20.85s
+epoch: 14 | train_loss: 0.5206, train_acc: 0.7800 | time: 19.26s
+epoch: 15 | train_loss: 0.4916, train_acc: 0.8000 | time: 19.08s
+epoch: 16 | train_loss: 0.4886, train_acc: 0.8000 | time: 19.31s
+epoch: 17 | train_loss: 0.4750, train_acc: 0.8000 | time: 19.29s
+epoch: 18 | train_loss: 0.4196, train_acc: 0.8000 | time: 19.33s
+epoch: 19 | train_loss: 0.4201, train_acc: 0.8200 | time: 19.51s
+epoch: 20 | train_loss: 0.4076, train_acc: 0.8200 | time: 19.25s
+```
+
+TODO:  

@@ -1,11 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from data_split import hotel_split
+from data_utils import load_htl_datasets, get_sanity_check_dataset
 
 class TextCNN(nn.Module):
     
-    def __init__(self, num_vocab, embed_dim, pretrained=None, num_filters=200,
-                 filter_sizes=[2, 3, 4, 5], output_dim=2, pad_idx=0, dropout=0.5):
+    def __init__(self, num_vocab, embed_dim, pad_idx, pretrained=None, num_filters=200,
+                 filter_sizes=[2, 3, 4, 5], output_dim=2, dropout=0.5):
         super().__init__()
         
         if pretrained is None:
