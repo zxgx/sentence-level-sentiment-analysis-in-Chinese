@@ -6,7 +6,7 @@ def num_parameters(model):
 
 
 def train(model, train_iter, optimizer, criterion, epochs, device, include_length, val_iter=None, save_dir=None):
-    model.to(device)
+    model.to(device) # optimizer定义前，需将model参数放到GPU
     best_acc, stop_asc = 0, 0
     for epoch in range(epochs):
         epoch_corrects, epoch_loss = 0, 0

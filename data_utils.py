@@ -14,8 +14,9 @@ def word_cut(text):
     return [word for word in jieba.cut(text) if word.strip()]
     
 
-def load_htl_datasets(dataset_dir='data', pretrained_path='sgns.renmin.bigram-char', cache_dir='caches',
-                      batch_first=True, include_length=False, batch_size=128, sort_within_batch=None):
+def load_htl_datasets(dataset_dir='data/hotel', pretrained_path='sgns.renmin.bigram-char', 
+                      cache_dir='caches', batch_first=True, include_length=False, 
+                      batch_size=128, sort_within_batch=None):
     '''
     Load the dataset splits of hotel reviews.
     
@@ -38,7 +39,7 @@ def load_htl_datasets(dataset_dir='data', pretrained_path='sgns.renmin.bigram-ch
     # load the original data splits
     train, val, test = data.TabularDataset.splits(
         path=dataset_dir, format='csv', skip_header=True, fields=fields,
-        train='htl_train.csv', validation='htl_val.csv', test='htl_test.csv'        
+        train='train.csv', validation='val.csv', test='test.csv'        
     )
     
     # load pretrained word vectors
@@ -81,6 +82,8 @@ def get_sanity_check_dataset(dataset, num_examples=50, seed=None,
                                 sort_within_batch=sort_within_batch)
 
 
+
+
 if __name__ == '__main__':
     train_iter, val_iter, test_iter = load_htl_datasets(batch_first=True, 
                                         include_length=False,
@@ -117,3 +120,5 @@ if __name__ == '__main__':
     pidx, uidx = TEXT.vocab.stoi[TEXT.pad_token], TEXT.vocab.stoi[TEXT.unk_token]
     print(TEXT.vocab.vectors[uidx][::20])
     print(TEXT.vocab.vectors[pidx])
+    
+

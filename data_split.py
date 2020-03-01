@@ -2,17 +2,16 @@ import os
 import numpy as np
 import pandas as pd
 
-def hotel_split(path, dir_name='data', seed=None):
+def hotel_split(path, dir_name, seed=None):
     if not os.path.exists(dir_name):
         os.mkdir(dir_name)
     
-    train_pth = os.path.join(dir_name, 'htl_train.csv')
-    val_pth = os.path.join(dir_name, 'htl_val.csv')
-    test_pth = os.path.join(dir_name, 'htl_test.csv')
+    train_pth = os.path.join(dir_name, 'train.csv')
+    val_pth = os.path.join(dir_name, 'val.csv')
+    test_pth = os.path.join(dir_name, 'test.csv')
     
     if os.path.exists(train_pth) or os.path.exists(val_pth) or os.path.exists(test_pth):
-        print("data splits have already existed in", dir_name)
-        print()
+        print("data splits have already existed in", dir_name, '\n')
         return
     
     # for the reproducibility of data splitting
@@ -37,8 +36,7 @@ def hotel_split(path, dir_name='data', seed=None):
     val.to_csv(val_pth, index=False)
     test.to_csv(test_pth, index=False)
 
-    print('='*20, 'Data splitting has been done!', '='*20)
-    print()
+    print('='*20, 'Data splitting has been done!', '='*20+'\n')
 
 if __name__ == '__main__':
-    hotel_split('data/ChnSentiCorp_htl_all.txt', seed=731)
+    hotel_split('data/ChnSentiCorp_htl_all.txt', 'data/hotel', seed=731)
