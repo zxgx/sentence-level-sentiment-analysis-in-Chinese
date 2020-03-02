@@ -109,7 +109,7 @@ class SentTokenizer(object):
                         embedding.append(word2vec[key])
                     else:
                         unk_count += 1
-            logger.info('{}/{} unknown words'.format(unk_count, len(embedding)))
+            logger.info('{}/{} unknown words'.format(unk_count, len(embedding)+unk_count))
             embedding = torch.tensor(embedding, dtype=torch.float)
             unk_embed = torch.mean(embedding, dim=0, keepdim=True)
             pad_embed = torch.zeros_like(unk_embed)
@@ -240,8 +240,12 @@ class BucketIterator(object):
         
         max_len = max(len(x['text']) for x in batch_data)
         if self.config.max_len is not None:
-            if self.config.is_bert and self.config.max_len-2<max_len:
-                max_len = self.config.max_len-2
+            if self.config.is_bert:
+                if self.config.max_len-2<max_len:
+                    max_len = self.config.max_len-2
+                else:
+                    max_len += 2
+            
             elif self.config.max_len < max_len:
                 max_len = self.config.max_len
         
@@ -252,6 +256,7 @@ class BucketIterator(object):
             if self.config.is_bert:
                 data = [self.tokenizer.cls_token_id] + data + [self.tokenizer.sep_token_id]
             lengths.append(len(data))
+            
             data = data + [self.tokenizer.pad_token_id] * (max_len-len(data))
             texts.append(data)
         ret = {
@@ -270,3 +275,4 @@ class BucketIterator(object):
             random.shuffle(self.batches)
         for batch in self.batches:
             yield batch
+
