@@ -9,7 +9,7 @@ class TextCNN(nn.Module):
         super().__init__()
         
         self.embedding = nn.Embedding.from_pretrained(
-            embedding, padding_idx=pad_idx, freeze=False
+            embedding, padding_idx=pad_idx
         )
         
         embed_dim = embedding.shape[1]

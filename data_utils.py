@@ -227,7 +227,7 @@ class BucketIterator(object):
             len(self.dataset)/config.batch_size
         )
         self.batches = self.create_batches()
-        
+    
     def create_batches(self):
         batches = []
         bs = self.config.batch_size
@@ -239,26 +239,30 @@ class BucketIterator(object):
         labels, texts, lengths = [], [], []
         
         max_len = max(len(x['text']) for x in batch_data)
+        text_max_len = max_len
         if self.config.max_len is not None:
             if self.config.is_bert:
-                if self.config.max_len-2<max_len:
-                    max_len = self.config.max_len-2
-                else:
-                    max_len += 2
-            
+                if self.config.max_len-2 < text_max_len:
+                    max_len = self.config.max_len
+                text_max_len = max_len - 2
+            # cnn or rnn
             elif self.config.max_len < max_len:
                 max_len = self.config.max_len
-        
+                text_max_len = max_len
+
+
         for ex in batch_data:
             labels.append(ex['label'])
             
-            data = ex['text']
+            data = ex['text'][:text_max_len]
+            
             if self.config.is_bert:
                 data = [self.tokenizer.cls_token_id] + data + [self.tokenizer.sep_token_id]
             lengths.append(len(data))
             
             data = data + [self.tokenizer.pad_token_id] * (max_len-len(data))
             texts.append(data)
+        
         ret = {
             'text': torch.tensor(texts, dtype=torch.long),
             'label': torch.tensor(labels, dtype=torch.long)
