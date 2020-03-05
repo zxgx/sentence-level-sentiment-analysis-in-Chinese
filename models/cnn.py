@@ -44,3 +44,4 @@ class TextCNN(nn.Module):
         x = self.fc(x)
         
         return x
+

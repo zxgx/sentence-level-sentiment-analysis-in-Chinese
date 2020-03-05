@@ -264,11 +264,11 @@ class BucketIterator(object):
             texts.append(data)
         
         ret = {
-            'text': torch.tensor(texts, dtype=torch.long),
-            'label': torch.tensor(labels, dtype=torch.long)
+            'text': torch.tensor(texts, dtype=torch.long).to(self.config.device),
+            'label': torch.tensor(labels, dtype=torch.long).to(self.config.device)
         }
         if self.config.include_length:
-            ret['length'] = torch.tensor(lengths, dtype=torch.long)
+            ret['length'] = torch.tensor(lengths, dtype=torch.long).to(self.config.device)
         return ret
             
     def __len__(self):

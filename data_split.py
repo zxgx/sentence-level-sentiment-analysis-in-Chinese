@@ -40,3 +40,4 @@ def hotel_split(path, dir_name, seed=None):
 
 if __name__ == '__main__':
     hotel_split('data/ChnSentiCorp_htl_all.txt', 'data/hotel', seed=731)
+

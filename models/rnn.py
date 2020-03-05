@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class RNN(nn.Module):
     def __init__(self, embedding, pad_idx, hidden_dim=300, 
-                 output_dim=2, dropout=0.5, n_layers=2):
+                 n_layers=2, output_dim=2, dropout=0.5):
         
         super().__init__()
         
@@ -53,3 +53,4 @@ class RNN(nn.Module):
         #hidden = [batch size, hid dim * num directions]
             
         return self.fc(hidden)
+
