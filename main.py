@@ -1,15 +1,18 @@
 import argparse
-from importlib import import_module
 import time 
 
 import torch
 import torch.nn as nn
 
-from models import CNN, RNN, BERT
+from models import TextCNN, RNN, BERT
 from data_utils import SentDatasetReader, BucketIterator
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 model_classes = {
-    'cnn':CNN,
+    'cnn':TextCNN,
     'rnn':RNN,
     'bert':BERT
 }
@@ -34,101 +37,11 @@ class Manager(object):
             config, train_set, tokenizer, shuffle=True, sort=True
         )
         self.val_iter = BucketIterator(
-            config, val_set, tokenizer, shuffle=False, sort=True)
+            config, val_set, tokenizer, shuffle=False, sort=True
         )
         self.test_iter = BucketIterator(
-            config, test_set, tokenizer, shuffle=False, sort=True)
+            config, test_set, tokenizer, shuffle=False, sort=True
         )
-    
-    def run(self):
-        optimizer = torch.optim.Adam(self.model.parameters())
-        criterion = nn.CrossEntropyLoss()
-        
-        best_acc, stop_asc = 0, 0
-        for epoch in range(self.config.epochs):
-            print('epoch: %d'%(epoch+1), end=' | ')
-            epoch_acc, epoch_loss = self.train_step(
-                train_iter, optimizer, criterion
-            )
-            
-        
-    def train_step(self, data_iter, optimizer, criterion):
-        '''
-        optimizer, criterion
-        '''
-        epoch_corrects, epoch_loss = 0, 0.0
-        self.model.train()
-        st = time.time()
-        for it, batch in enumerate(data_iter):
-            optimizer.zero_grad()
-            
-            review = batch['text']
-            if self.config.include_length:
-                length = batch['length']
-                pred = self.model(review, length)
-            else: 
-                pred = self.model(review)
-            label = batch['label']
-            loss = criterion(pred, label)
-            loss.backward()
-            optimizer.step()
-            
-            corrects = torch.sum(torch.argmax(pred, dim=1)==label).item()
-            epoch_corrects += corrects
-            epoch_loss += loss.item()
-        
-        print("training loss: %.4f, training acc: %.4f"%(
-                epoch_loss/len(train_iter), epoch
-        print('epoch: %d | train_loss: %.4f, train_acc: %.4f'%
-              (epoch+1, epoch_loss/len(train_iter), 
-              epoch_corrects/len(train_iter.dataset)),
-              end=' | ')
-        
-        if not self.val_iter is None:
-            val_acc, val_loss = evaluate(model, val_iter, criterion, device, include_length)
-            print('val_loss: %.4f, val_acc: %.4f'%(val_loss, val_acc), end=' | ')
-            if val_acc > best_acc:
-                best_acc, stop_asc = val_acc, 0
-                if not save_dir is None:
-                    if not os.path.exists(save_dir):
-                        os.mkdir(save_dir)
-                    save_path = os.path.join(save_dir, 'best.pth')
-                    torch.save(model.state_dict(), save_path)
-            else:
-                stop_asc += 1
-                if stop_asc == 5:
-                    break
-
-        et = time.time()
-        print('time: %.2fs'%(et-st))        
-            
-        return best_acc
-        
-    def evaluate(self):
-        '''
-        criterion
-        '''
-        epoch_corrects, epoch_loss = 0, 0
-        model.to(device)
-        model.eval()
-        dataset_size = len(data_iter.dataset)
-        with torch.no_grad():
-            for it, batch in enumerate(data_iter):
-                if include_length:
-                    (review, length), label = batch.review, batch.label
-                    review, length, label = review.to(device), length.to(device), label.to(device)
-                    pred = model(review, length)
-                else:
-                    review, label = batch.review.to(device), batch.label.to(device)
-                    pred = model(review)
-                    
-                loss = criterion(pred, label)
-                
-                corrects = torch.sum((torch.argmax(pred, dim=1)) == label).item()
-                epoch_corrects += corrects
-                epoch_loss += loss.item()
-                
-        return epoch_corrects/dataset_size, epoch_loss/len(data_iter)
 
 
 if __name__=='__main__':
@@ -139,10 +52,13 @@ if __name__=='__main__':
         help='Model name in: cnn / rnn / bert'
     )
     parser.add_argument('--bert_identifier', default='hfl/chinese-bert-wwm-ext', type=str, 
-        help="Pretrained BERT model identifier. refer to hugging face for more details"
+        help="Pretrained BERT model identifier. Refer to hugging face for more details"
     )
     parser.add_argument('--bert_dir', default='caches/chinese_wwm_ext_pytorch', type=str, 
         help="Pretrained BERT model cache directory, download model directly to this dir"
+    )
+    parser.add_argument('--freeze', default=True, type=bool, required=True,
+        help="Whether to freeze weights of embeddings"
     )
     
     # Dataset config
@@ -168,7 +84,7 @@ if __name__=='__main__':
     parser.add_argument('--max_len', default=None, type=int,
         help="Max length for every example. Neccessary for bert, including cls & sep token"
     )
-    parser.add_argument('--include_length', default=True, type=bool,
+    parser.add_argument('--include_length', default=False, type=bool,
         help="Whether to include length when reading examples. Neccessary for bert & rnn"
     )
     
@@ -180,10 +96,11 @@ if __name__=='__main__':
         help="Training device"
     )
     parser.add_argument('--save_dir', default=None, type=str,
-        help="Fine-tuned model saved directory"
+        help="Directory where fine-tuned models are saved"
     )
     
     config = parser.parse_args()
+    
     if config.model_name == 'bert':
         config.is_bert = True
     else:
@@ -194,5 +111,45 @@ if __name__=='__main__':
     
     print(vars(config))
     
-    Manager(config)
+    ####################################################################
+    
+    print(torch.cuda.current_device())
+    reader = SentDatasetReader(config)
+    
+    tokenizer = reader.tokenizer
+    print("vocab size:", len(tokenizer.ids_to_tokens))
+    
+    train_set, val_set, test_set = reader.train_set, reader.val_set, reader.test_set
+    print(len(train_set), len(val_set), len(test_set))
+    
+    train_iter = BucketIterator(config, train_set[:50], tokenizer, shuffle=True)
+    
+    
+    # cnn & rnn
+    # model = model_classes[config.model_name](tokenizer.embedding, tokenizer.pad_token_id, config.freeze).to(config.device)
+    
+    
+    # bert
+    model = model_classes[config.model_name](config.bert_dir, config.freeze).to(config.device)
+    torch.cuda.empty_cache()
+    print(torch.cuda.memory_summary(device=None, abbreviated=False))
+    # for name, param in model.named_parameters():
+    #     print(name, param.shape, param.requires_grad)
+    print("totoal params:", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    # for rnn, larger lr is a better choice
+    optimizer = torch.optim.Adam(model.parameters(), lr=2e-5)
+    criterion = nn.CrossEntropyLoss()
+    for epoch in range(config.epochs):
+        for batch in train_iter:
+            optimizer.zero_grad()
+            text, label = batch['text'], batch['label']
+            if config.include_length:
+                length = batch['length']
+                pred = model(text, length)
+            else:
+                pred = model(text)
+            loss = criterion(pred, label)
+            loss.backward()
+            print(loss.item(), torch.cuda.memory_allocated())
+            optimizer.step()
 

@@ -240,6 +240,7 @@ class BucketIterator(object):
         
         max_len = max(len(x['text']) for x in batch_data)
         text_max_len = max_len
+        # print("max text length", text_max_len)
         if self.config.max_len is not None:
             if self.config.is_bert:
                 if self.config.max_len-2 < text_max_len:
@@ -249,17 +250,17 @@ class BucketIterator(object):
             elif self.config.max_len < max_len:
                 max_len = self.config.max_len
                 text_max_len = max_len
-
+        # print("limited len:", max_len, text_max_len)
 
         for ex in batch_data:
             labels.append(ex['label'])
-            
+            # print("before",len(ex['text']), end=" ")
             data = ex['text'][:text_max_len]
             
             if self.config.is_bert:
                 data = [self.tokenizer.cls_token_id] + data + [self.tokenizer.sep_token_id]
             lengths.append(len(data))
-            
+            # print(" after", len(data))
             data = data + [self.tokenizer.pad_token_id] * (max_len-len(data))
             texts.append(data)
         

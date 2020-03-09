@@ -2,13 +2,13 @@ import torch
 import torch.nn as nn
 
 class RNN(nn.Module):
-    def __init__(self, embedding, pad_idx, hidden_dim=300, 
+    def __init__(self, embedding, pad_idx, freeze, hidden_dim=300, 
                  n_layers=2, output_dim=2, dropout=0.5):
         
         super().__init__()
         
-        self.embedding = nn.Embedding.from_pretrianed(
-            pretrained, padding_idx=pad_idx
+        self.embedding = nn.Embedding.from_pretrained(
+            embedding, padding_idx=pad_idx, freeze=freeze
         )
         
         embed_dim = embedding.shape[1]

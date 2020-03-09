@@ -4,12 +4,12 @@ import torch.nn.functional as F
 
 class TextCNN(nn.Module):
     
-    def __init__(self, embedding, pad_idx, num_filters=200,
+    def __init__(self, embedding, pad_idx, freeze, num_filters=200,
                  filter_sizes=[2, 3, 4, 5], output_dim=2, dropout=0.5):
         super().__init__()
         
         self.embedding = nn.Embedding.from_pretrained(
-            embedding, padding_idx=pad_idx
+            embedding, padding_idx=pad_idx, freeze=freeze
         )
         
         embed_dim = embedding.shape[1]
