@@ -206,6 +206,9 @@ class SentDatasetReader(object):
                 if len(line) != 2:
                     logger.warning("Unexpected line: %s"%line)
                     continue
+                if not line[1]:
+                    logger.warning("Reading an empty line!")
+                    continue
                 label = int(line[0])
                 text = self.tokenizer.encode(line[1], add_special_tokens=False)
                 data = {'label':label, 'text':text}

@@ -4,8 +4,8 @@ import torch.nn.functional as F
 
 class TextCNN(nn.Module):
     
-    def __init__(self, embedding, pad_idx, freeze, num_filters=200,
-                 filter_sizes=[2, 3, 4, 5], output_dim=2, dropout=0.5):
+    def __init__(self, embedding, pad_idx, freeze, num_filters=16,
+                 filter_sizes=[2, 3], output_dim=2, dropout=0.5):
         super().__init__()
         
         self.embedding = nn.Embedding.from_pretrained(
