@@ -15,7 +15,7 @@ class BERT(nn.Module):
     def __init__(self, bert_dir, freeze, output_dim=2):
         super().__init__()
         
-        self.bert = BertModel.from_pretrained(bert_dir).requires_grad_(False)
+        self.bert = BertModel.from_pretrained(bert_dir)
         self.bert.embeddings.requires_grad_(not freeze)
         self.fc = nn.Linear(self.bert.config.hidden_size, output_dim)
     

@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 
 class RNN(nn.Module):
-    def __init__(self, embedding, pad_idx, freeze, hidden_dim=300, 
-                 n_layers=2, output_dim=2, dropout=0.5):
+    def __init__(self, embedding, pad_idx, freeze, hidden_dim=32,
+                 n_layers=1, output_dim=2, dropout=0.75):
         
         super().__init__()
         

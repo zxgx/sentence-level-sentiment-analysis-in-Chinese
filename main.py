@@ -1,6 +1,7 @@
 import argparse
 import time 
 import os
+import random
 
 import torch
 import torch.nn as nn
@@ -28,7 +29,7 @@ class Manager(object):
         parser = argparse.ArgumentParser(description="Chinese Sentence level Sentiment Analysis")
         
         # Model config
-        parser.add_argument('--model_name', default='cnn', type=str, required=True, 
+        parser.add_argument('--model_name', type=str, required=True, 
             help='Model name in: cnn / rnn / bert'
         )
         parser.add_argument('--bert_identifier', default='hfl/chinese-bert-wwm-ext', type=str, 
@@ -37,20 +38,20 @@ class Manager(object):
         parser.add_argument('--bert_dir', default='caches/chinese_wwm_ext_pytorch', type=str, 
             help="Pretrained BERT model cache directory, download model directly to this dir"
         )
-        parser.add_argument('--freeze', default=True, type=bool, required=True,
+        parser.add_argument('--freeze', type=bool, required=True,
             help="Whether to freeze weights of embeddings"
         )
         
         # Dataset config
-        parser.add_argument('--dataset_dir', default='data/hotel', type=str, required=True,
+        parser.add_argument('--dataset_dir', type=str, required=True,
             help="Data splits directory"
         )
-        parser.add_argument('--skip_header', default=True, type=bool, required=True,
-            help="Whether to skip one line for every data splits"
+        parser.add_argument('--skip_header', default=True, type=bool,
+            help="Whether to skip the first line for every data splits"
         )
         
         # Tokenizer
-        parser.add_argument('--tok_cache', default='caches/hotel_tokenizer.pt', type=str, 
+        parser.add_argument('--tok_cache', default='caches/tokenizer.pt', type=str, 
             help="Tokenizer cache, including vocab & embedding, used by rnn & cnn"
         )
         parser.add_argument('--embedding_path', default='caches/sgns.renmin.bigram-char', type=str,
@@ -69,7 +70,7 @@ class Manager(object):
         )
         
         # Running Config
-        parser.add_argument('--repeat', default=5, type=int, required=True,
+        parser.add_argument('--repeat', type=int, required=True,
             help="Repeat for stable statistic of model"
         )
         parser.add_argument('--epochs', default=20, type=int, 
@@ -81,6 +82,9 @@ class Manager(object):
         parser.add_argument('--save_dir', default=None, type=str,
             help="Directory where fine-tuned models are saved"
         )
+        parser.add_argument('--seed', default=None, type=int,
+            help="Random seed for reproducibility"
+        )
         
         self.config = parser.parse_args()
         
@@ -91,6 +95,13 @@ class Manager(object):
         
         self.config.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') if \
             self.config.device is None else torch.device(self.config.device)
+        
+        if self.config.seed is not None:
+            random.seed(self.config.seed)
+            torch.manual_seed(self.config.seed)
+            torch.cuda.manual_seed(self.config.seed)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
         
         for k, v in vars(self.config).items():
             print(k.upper(), ":", v)
@@ -191,7 +202,9 @@ class Manager(object):
                     tokenizer.pad_token_id, 
                     self.config.freeze
                 ).to(self.config.device)
-            optimizer = torch.optim.Adam(model.parameters()) # lr
+            optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05, lr=2e-5) # lr
+            #optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05)
+            # wrapper = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
             
             it_st = time.time()
             print('='*30, "Iteration: ", (it+1), '='*30)
@@ -247,7 +260,6 @@ class Manager(object):
         model.load_state_dict(torch.load(pth))
         model.eval()
         
-        correct = 0
         with torch.no_grad():
             for batch in test_iter:
                 text, label = batch['text'], batch['label']
@@ -257,7 +269,7 @@ class Manager(object):
                 else:
                     pred = model(text)
                 y = torch.argmax(pred, dim=1)
-                correct += torch.sum(y==label).item()
+                
                 wrong = text[y!=label].tolist()
                 wrong_label = y[y!=label].tolist()
                 for sent, wl in zip(wrong, wrong_label):
@@ -265,53 +277,11 @@ class Manager(object):
                     for id in sent:
                         print(lt[id], end=" ")
                     print('\n')
-        print("acc: %.4f"%(correct/len(test_iter.dataset)))
 
 
 if __name__=='__main__':
-
-    ####################################################################
-    """ Sanity check
-    print(torch.cuda.current_device())
-    reader = SentDatasetReader(config)
     
-    tokenizer = reader.tokenizer
-    print("vocab size:", len(tokenizer.ids_to_tokens))
-    
-    train_set, val_set, test_set = reader.train_set, reader.val_set, reader.test_set
-    print(len(train_set), len(val_set), len(test_set))
-    
-    train_iter = BucketIterator(config, train_set[:50], tokenizer, shuffle=True)
-    
-    
-    # cnn & rnn
-    # model = model_classes[config.model_name](tokenizer.embedding, tokenizer.pad_token_id, config.freeze).to(config.device)
-    
-    
-    # bert
-    model = model_classes[config.model_name](config.bert_dir, config.freeze).to(config.device)
-    torch.cuda.empty_cache()
-    print(torch.cuda.memory_summary(device=None, abbreviated=False))
-    # for name, param in model.named_parameters():
-    #     print(name, param.shape, param.requires_grad)
-    print("totoal params:", sum(p.numel() for p in model.parameters() if p.requires_grad))
-    # for rnn, larger lr is a better choice, while for bert, smaller lr is better
-    optimizer = torch.optim.Adam(model.parameters())
-    criterion = nn.CrossEntropyLoss()
-    for epoch in range(config.epochs):
-        for batch in train_iter:
-            optimizer.zero_grad()
-            text, label = batch['text'], batch['label']
-            if config.include_length:
-                length = batch['length']
-                pred = model(text, length)
-            else:
-                pred = model(text)
-            loss = criterion(pred, label)
-            loss.backward()
-            print(loss.item(), torch.cuda.memory_allocated())
-            optimizer.step()
-    """
+    # sum(p.numel() for p in model.parameters() if p.requires_grad)
     
     m = Manager()
     m.run()
