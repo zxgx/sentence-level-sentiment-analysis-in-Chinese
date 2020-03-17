@@ -2,23 +2,35 @@ import argparse
 import time 
 import os
 import random
+import io
 
 import torch
 import torch.nn as nn
+import seaborn
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 from models import TextCNN, RNN, BERT
 from data_utils import SentDatasetReader, BucketIterator
 
-import logging
+#import logging
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+#logging.basicConfig(level=logging.INFO)
+#logger = logging.getLogger(__name__)
 
 model_classes = {
     'cnn':TextCNN,
     'rnn':RNN,
     'bert':BERT
 }
+
+#mpl.rcParams['font.sans-serif'] = ['SimHei']
+#mpl.rcParams['axes.unicode_minus'] = False
+#seaborn.set(font='SimHei')
+#print(seaborn.axes_style())
+def draw_attention(data, x, y, ax, cbar):
+    seaborn.heatmap(data, xticklabels=x, square=True, yticklabels=y, vmin=0.0, vmax=1.0,
+        cbar=cbar, ax=ax)
 
 class Manager(object):
     '''
@@ -202,8 +214,8 @@ class Manager(object):
                     tokenizer.pad_token_id, 
                     self.config.freeze
                 ).to(self.config.device)
-            optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05, lr=2e-5) # lr
-            #optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05)
+            #optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05, lr=2e-5) # lr
+            optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05)
             # wrapper = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
             
             it_st = time.time()
@@ -222,7 +234,7 @@ class Manager(object):
                         model.state_dict(), 
                         pth
                     )
-                    logger.info("Best model saved at %s, in it %d"%(
+                    print("Best model saved at %s, in it %d"%(
                         pth, it+1)
                     )
                 test_max_acc = test_acc
@@ -260,7 +272,9 @@ class Manager(object):
         model.load_state_dict(torch.load(pth))
         model.eval()
         
+        f = io.open(self.config.model_name+'.log', 'w', encoding='utf-8')
         with torch.no_grad():
+            corrects = 0
             for batch in test_iter:
                 text, label = batch['text'], batch['label']
                 if self.config.include_length:
@@ -269,14 +283,57 @@ class Manager(object):
                 else:
                     pred = model(text)
                 y = torch.argmax(pred, dim=1)
-                
+                corrects += torch.sum(y!=label).item()
                 wrong = text[y!=label].tolist()
                 wrong_label = y[y!=label].tolist()
                 for sent, wl in zip(wrong, wrong_label):
-                    print("wrong predict to", wl, end=":\t")
+                    f.write("wrong predict to "+str(wl)+":\t")
                     for id in sent:
-                        print(lt[id], end=" ")
-                    print('\n')
+                        f.write(lt[id]+' ')
+                    f.write('\n\n')
+            f.write("error ratio: %d / %d"%(corrects, len(test_iter.dataset)))
+        f.close()
+
+    def attention_map(self, sent):
+        if self.config.save_dir is None:
+            print("Model is not saved")
+            return 
+
+        if not self.config.is_bert:
+            print("Only bert model has attention map")
+            return
+
+        tokenizer = self.reader.tokenizer
+        model = model_classes[self.config.model_name](
+            self.config.bert_dir,
+            self.config.freeze
+        ).to(self.config.device)
+        pth = os.path.join(self.config.save_dir, self.config.model_name+".pt")
+        model.load_state_dict(torch.load(pth))
+        model.eval()
+        model.bert.encoder.output_attentions = True
+        for layer in model.bert.encoder.layer:
+            layer.attention.self.output_attentions=True
+
+        tokens = tokenizer.tokenize(sent)
+        if len(tokens) > self.config.max_len-2:
+            tokens = tokens[:self.config.max_len-2]
+        tokens = [tokenizer.cls_token] + tokens + [tokenizer.sep_token]
+        ids = [ tokenizer.vocab[token] for token in tokens]
+        x = torch.tensor(ids, dtype=torch.long).unsqueeze(0).to(self.config.device)
+        length = torch.tensor(len(ids), dtype=torch.long).unsqueeze(0).to(self.config.device)
+        pred, att = model(x, length, output_attentions=True)
+        print(pred, len(att))
+        for l_no, att_map in enumerate(att):
+            att_map = att_map.cpu().detach().numpy()
+            for row in range(4):
+                fig, axs = plt.subplots(1, 3, figsize=(20, 10))
+                for col in range(3):
+                    draw_attention(att_map[0, row*3+col], tokens, 
+                    tokens if col==0 else [], ax=axs[col], cbar=col==2)
+                plt.title("Bert Layer %d %d-%d attention"%(l_no+1, row*3+1, (row+1)*3))
+                plt.savefig("layer_%d_%d-%d.jpg"%(l_no+1, row*3+1, (row+1)*3))
+                plt.show()
 
 
 if __name__=='__main__':
@@ -286,3 +343,4 @@ if __name__=='__main__':
     m = Manager()
     m.run()
     m.insight()
+    #m.attention_map("周边环境较差，服务的速度慢，态度还可以，价格太高。")

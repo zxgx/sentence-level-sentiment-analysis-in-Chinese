@@ -19,11 +19,15 @@ class BERT(nn.Module):
         self.bert.embeddings.requires_grad_(not freeze)
         self.fc = nn.Linear(self.bert.config.hidden_size, output_dim)
     
-    def forward(self, text, length):
+    def forward(self, text, length, output_attentions=False):
         att_mask = create_attention_mask(text, length)
-        x = self.bert(text, attention_mask=att_mask)[0]
+        res = self.bert(text, attention_mask=att_mask)
+        x = res[0]
         x = x[:, 0] # cls token for classification
         # sentence mean for classification, recommended by huggingface
         # x = x.mean(dim=1) 
-        return self.fc(x)
+        if output_attentions:
+            return self.fc(x), res[2]
+        else:
+            return self.fc(x)
 
