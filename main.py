@@ -1,8 +1,8 @@
 import argparse
 import time 
 import os
-import random
 import io
+import copy
 
 import torch
 import torch.nn as nn
@@ -10,7 +10,7 @@ import seaborn
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-from models import TextCNN, RNN, BERT
+from models import TextCNN, RNN, BERT, Att_RNN, RCNN
 from data_utils import SentDatasetReader, BucketIterator
 
 #import logging
@@ -21,8 +21,16 @@ from data_utils import SentDatasetReader, BucketIterator
 model_classes = {
     'cnn':TextCNN,
     'rnn':RNN,
+    'att-rnn':Att_RNN,
+    'rcnn':RCNN,
     'bert':BERT
 }
+
+def str2bool(v):
+    if v=='True':
+        return True
+    else:
+        return False
 
 #mpl.rcParams['font.sans-serif'] = ['SimHei']
 #mpl.rcParams['axes.unicode_minus'] = False
@@ -50,15 +58,15 @@ class Manager(object):
         parser.add_argument('--bert_dir', default='caches/chinese_wwm_ext_pytorch', type=str, 
             help="Pretrained BERT model cache directory, download model directly to this dir"
         )
-        parser.add_argument('--freeze', type=bool, required=True,
+        parser.add_argument('--freeze', type=str2bool, required=True,
             help="Whether to freeze weights of embeddings"
         )
-        
+
         # Dataset config
         parser.add_argument('--dataset_dir', type=str, required=True,
             help="Data splits directory"
         )
-        parser.add_argument('--skip_header', default=True, type=bool,
+        parser.add_argument('--skip_header', default=True, type=str2bool,
             help="Whether to skip the first line for every data splits"
         )
         
@@ -77,7 +85,7 @@ class Manager(object):
         parser.add_argument('--max_len', default=None, type=int,
             help="Max length for every example. Neccessary for bert, including cls & sep token"
         )
-        parser.add_argument('--include_length', default=False, type=bool,
+        parser.add_argument('--include_length', default=False, type=str2bool,
             help="Whether to include length when reading examples. Neccessary for bert & rnn"
         )
         
@@ -94,10 +102,6 @@ class Manager(object):
         parser.add_argument('--save_dir', default=None, type=str,
             help="Directory where fine-tuned models are saved"
         )
-        parser.add_argument('--seed', default=None, type=int,
-            help="Random seed for reproducibility"
-        )
-        
         self.config = parser.parse_args()
         
         if self.config.model_name == 'bert':
@@ -107,14 +111,7 @@ class Manager(object):
         
         self.config.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') if \
             self.config.device is None else torch.device(self.config.device)
-        
-        if self.config.seed is not None:
-            random.seed(self.config.seed)
-            torch.manual_seed(self.config.seed)
-            torch.cuda.manual_seed(self.config.seed)
-            torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.benchmark = False
-        
+
         for k, v in vars(self.config).items():
             print(k.upper(), ":", v)
             
@@ -321,8 +318,9 @@ class Manager(object):
         tokens = [tokenizer.cls_token] + tokens + [tokenizer.sep_token]
         ids = [ tokenizer.vocab[token] for token in tokens]
         x = torch.tensor(ids, dtype=torch.long).unsqueeze(0).to(self.config.device)
-        length = torch.tensor(len(ids), dtype=torch.long).unsqueeze(0).to(self.config.device)
-        pred, att = model(x, length, output_attentions=True)
+        mask = (x!=tokenizer.pad_token_id).unsqeeze(0).to(self.config.device)
+        with torch.no_grad():
+           pred, att = model(x, mask, output_attentions=True)
         print(pred, len(att))
         for l_no, att_map in enumerate(att):
             att_map = att_map.cpu().detach().numpy()
@@ -341,6 +339,10 @@ if __name__=='__main__':
     # sum(p.numel() for p in model.parameters() if p.requires_grad)
     
     m = Manager()
-    m.run()
-    m.insight()
+    tokenizer = m.reader.tokenizer
+    print(len(tokenizer.ids_to_tokens))
+ #   m.run()
+#    m.insight()
     #m.attention_map("周边环境较差，服务的速度慢，态度还可以，价格太高。")
+
+
