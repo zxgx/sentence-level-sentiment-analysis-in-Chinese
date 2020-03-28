@@ -6,6 +6,9 @@ import copy
 
 import torch
 import torch.nn as nn
+
+from sklearn import metrics
+
 import seaborn
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -14,9 +17,7 @@ from models import TextCNN, RNN, BERT, Att_RNN, RCNN
 from data_utils import SentDatasetReader, BucketIterator
 
 #import logging
-
 #logging.basicConfig(level=logging.INFO)
-#logger = logging.getLogger(__name__)
 
 model_classes = {
     'cnn':TextCNN,
@@ -42,8 +43,6 @@ def draw_attention(data, x, y, ax, cbar):
 
 class Manager(object):
     '''
-    device
-    dtype
     '''
     def __init__(self):
         parser = argparse.ArgumentParser(description="Chinese Sentence level Sentiment Analysis")
@@ -116,12 +115,25 @@ class Manager(object):
             print(k.upper(), ":", v)
             
         self.reader = SentDatasetReader(self.config)
+        train_set = self.reader.train_set
+        val_set = self.reader.val_set
+        test_set = self.reader.test_set
+        self.tokenizer = self.reader.tokenizer
+        self.train_iter = BucketIterator(
+            self.config, train_set, tokenizer, shuffle=True, sort=True
+        )
+        self.val_iter = BucketIterator(
+            self.config, val_set, tokenizer, shuffle=False, sort=True
+        )
+        self.test_iter = BucketIterator(
+            self.config, test_set, tokenizer, shuffle=False, sort=True
+        )
     
     def train(self, model, optimizer, criterion, train_iter, val_iter):
-        best_acc, stop_asc = 0, 0
+        best_f1, stop_asc = 0.0, 0
         tmp_cache = self.config.model_name + ".tmp"
         for epoch in range(self.config.epochs):
-            epoch_corrects, epoch_loss = 0, 0
+            epoch_corrects, epoch_loss = 0, 0.0
             model.train()
             st = time.time()
             for batch in train_iter:
@@ -144,11 +156,11 @@ class Manager(object):
                 (epoch+1, epoch_loss/len(train_iter), epoch_corrects/len(train_iter.dataset)), 
                 end =' | '
             )
-            val_acc, val_loss = self.evaluate(model, criterion, val_iter)
-            print('val_loss: %.4f, val_acc: %.4f'%(val_loss, val_acc), end=' | ')
+            val_loss, val_acc, val_f1 = self.evaluate(model, criterion, val_iter)
+            print('val loss: %.4f, val acc: %.4f, val f1: %.4f'%(val_loss, val_acc, val_f1), end=' | ')
             print('time cost: %.2fs'%(time.time()-st))
-            if val_acc > best_acc:
-                best_acc = val_acc
+            if val_f1 > best_f1:
+                best_f1 = val_f1
                 torch.save(model.state_dict(), tmp_cache)
                 stop_asc = 0
             else:
@@ -159,10 +171,11 @@ class Manager(object):
                 break
         model.load_state_dict(torch.load(tmp_cache))
         os.remove(tmp_cache)
-        return best_acc
+        return best_f1
         
     def evaluate(self, model, criterion, val_iter):
-        epoch_corrects, epoch_loss = 0, 0
+        epoch_corrects, epoch_loss = 0, 0.0
+        y_pred, y_true = None, None
         model.eval()
         with torch.no_grad():
             for batch in val_iter:
@@ -178,27 +191,22 @@ class Manager(object):
                 epoch_corrects += corrects
                 epoch_loss += loss.item()
                 
-        return epoch_corrects/len(val_iter.dataset), epoch_loss/len(val_iter)
+                if y_pred is None:
+                	y_pred = pred
+                	y_true = label
+                else:
+                	y_pred = torch.cat((y_pred, pred), dim=0)
+                	y_true = torch.cat((y_true, label), dim=0)
+
+        f1 = metrics.f1_score(y_true.cpu(), torch.argmax(y_pred, dim=1).cpu() )
+        return epoch_loss/len(val_iter), epoch_corrects/len(val_iter.dataset), f1
     
     def run(self):
-        criterion = nn.CrossEntropyLoss()
-
-        train_set = self.reader.train_set
-        val_set = self.reader.val_set
-        test_set = self.reader.test_set
-        tokenizer = self.reader.tokenizer
-        train_iter = BucketIterator(
-            self.config, train_set, tokenizer, shuffle=True, sort=True
-        )
-        val_iter = BucketIterator(
-            self.config, val_set, tokenizer, shuffle=False, sort=True
-        )
-        test_iter = BucketIterator(
-            self.config, test_set, tokenizer, shuffle=False, sort=True
-        )
+        criterion = nn.CrossEntropyLoss()        
         
-        val_max_acc, val_avg_acc = 0, 0
-        test_max_acc, test_avg_acc = 0, 0
+        val_max_f1, val_avg_f1 = 0.0, 0.0
+        # test_max_acc, test_avg_acc = 0.0, 0.0
+        test_max_f1, test_avg_f1 = 0.0, 0.0
         for it in range(self.config.repeat):
             if self.config.is_bert:
                 model = model_classes[self.config.model_name](
@@ -207,24 +215,23 @@ class Manager(object):
                 ).to(self.config.device)
             else:
                 model = model_classes[self.config.model_name](
-                    tokenizer.embedding, 
-                    tokenizer.pad_token_id, 
+                    self.tokenizer.embedding, 
+                    self.tokenizer.pad_token_id, 
                     self.config.freeze
                 ).to(self.config.device)
-            #optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05, lr=2e-5) # lr
+            #optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05, lr=2e-5)
             optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05)
-            # wrapper = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
             
             it_st = time.time()
             print('='*30, "Iteration: ", (it+1), '='*30)
-            val_acc = self.train(model, optimizer, criterion, train_iter, val_iter)
-            test_acc, _ = self.evaluate(model, criterion, test_iter)
-            print('Time cost this iteration: %.2fs | VAL acc: %.4f | TEST acc: %.4f'%
-                ((time.time()-it_st), val_acc, test_acc)
+            val_f1 = self.train(model, optimizer, criterion, self.train_iter, self.val_iter)
+            _, _, test_f1 = self.evaluate(model, criterion, self.test_iter)
+            print('Time cost this iteration: %.2fs | VAL f1: %.4f | TEST acc: %.4f, TEST f1: %.4f'%
+                ((time.time()-it_st), val_f1, test_acc, test_f1)
             )
-            if val_acc > val_max_acc:
-                val_max_acc = val_acc
-            if test_acc > test_max_acc:
+            if val_f1 > val_max_f1:
+                val_max_f1 = val_f1
+            if test_f1 > test_max_f1:
                 if self.config.save_dir is not None:
                     pth = os.path.join(self.config.save_dir, self.config.model_name+".pt")
                     torch.save(
@@ -234,26 +241,20 @@ class Manager(object):
                     print("Best model saved at %s, in it %d"%(
                         pth, it+1)
                     )
-                test_max_acc = test_acc
-            val_avg_acc += val_acc
-            test_avg_acc += test_acc
-        val_avg_acc /= self.config.repeat
-        test_avg_acc /= self.config.repeat
-        print("MAX VAL acc: %.4f, AVG VAL acc: %.4f"%(val_max_acc, val_avg_acc))
-        print("MAX TEST acc: %.4f, AVG TEST acc: %.4f"%(test_max_acc, test_avg_acc))
+                test_max_f1 = test_f1
+            val_avg_f1 += val_f1
+            test_avg_f1 += test_f1
+        val_avg_f1 /= self.config.repeat
+        test_avg_f1 /= self.config.repeat
+        print("MAX VAL f1: %.4f, AVG VAL f1: %.4f"%(val_max_f1, val_avg_f1))
+        print("MAX TEST f1: %.4f, AVG TEST f1: %.4f"%(test_max_f1, test_avg_f1))
     
     def insight(self):
         if self.config.save_dir is None:
             print("Model is not saved")
             return
-        
-        tokenizer = self.reader.tokenizer
-        test_set = self.reader.test_set
-        test_iter = BucketIterator(
-            self.config, test_set, tokenizer, 
-            shuffle=False, sort=True
-        )
-        lt = tokenizer.ids_to_tokens
+
+        lt = self.tokenizer.ids_to_tokens
         if self.config.is_bert:
             model = model_classes[self.config.model_name](
                 self.config.bert_dir, 
@@ -261,8 +262,8 @@ class Manager(object):
             ).to(self.config.device)
         else:
             model = model_classes[self.config.model_name](
-                tokenizer.embedding, 
-                tokenizer.pad_token_id, 
+                self.tokenizer.embedding, 
+                self.tokenizer.pad_token_id, 
                 self.config.freeze
             ).to(self.config.device)
         pth = os.path.join(self.config.save_dir, self.config.model_name+".pt")
@@ -272,7 +273,7 @@ class Manager(object):
         f = io.open(self.config.model_name+'.log', 'w', encoding='utf-8')
         with torch.no_grad():
             corrects = 0
-            for batch in test_iter:
+            for batch in self.test_iter:
                 text, label = batch['text'], batch['label']
                 if self.config.include_length:
                     length = batch['length']
@@ -288,7 +289,7 @@ class Manager(object):
                     for id in sent:
                         f.write(lt[id]+' ')
                     f.write('\n\n')
-            f.write("error ratio: %d / %d"%(corrects, len(test_iter.dataset)))
+            f.write("error ratio: %d / %d"%(corrects, len(self.test_iter.dataset)))
         f.close()
 
     def attention_map(self, sent):
@@ -300,7 +301,7 @@ class Manager(object):
             print("Only bert model has attention map")
             return
 
-        tokenizer = self.reader.tokenizer
+        tokenizer = self.tokenizer
         model = model_classes[self.config.model_name](
             self.config.bert_dir,
             self.config.freeze
@@ -318,9 +319,10 @@ class Manager(object):
         tokens = [tokenizer.cls_token] + tokens + [tokenizer.sep_token]
         ids = [ tokenizer.vocab[token] for token in tokens]
         x = torch.tensor(ids, dtype=torch.long).unsqueeze(0).to(self.config.device)
-        mask = (x!=tokenizer.pad_token_id).unsqeeze(0).to(self.config.device)
+        length = torch.tensor([len(ids)], dtype=torch.long).to(self.config.device)
+        # mask = (x!=tokenizer.pad_token_id).unsqeeze(0).to(self.config.device)
         with torch.no_grad():
-           pred, att = model(x, mask, output_attentions=True)
+           pred, att = model(x, length, output_attentions=True)
         print(pred, len(att))
         for l_no, att_map in enumerate(att):
             att_map = att_map.cpu().detach().numpy()
@@ -334,15 +336,27 @@ class Manager(object):
                 plt.show()
 
 
+def statistic(dataset):
+	n, p = 0, 0
+	for item in dataset:
+		if item['label'] == 1:
+			p+=1
+		else:
+			n+=1
+
+	print("total: %d, pos: %d, neg: %d"%(len(dataset), p, n))
+
 if __name__=='__main__':
     
     # sum(p.numel() for p in model.parameters() if p.requires_grad)
     
     m = Manager()
-    tokenizer = m.reader.tokenizer
-    print(len(tokenizer.ids_to_tokens))
- #   m.run()
-#    m.insight()
-    #m.attention_map("周边环境较差，服务的速度慢，态度还可以，价格太高。")
-
+    # tokenizer = m.reader.tokenizer
+    # print(len(tokenizer.ids_to_tokens))
+    statistic(m.reader.train_set)
+    statistic(m.reader.val_set)
+    statistic(m.reader.test_set)
+ 	# m.run()
+	# m.insight()
+    # m.attention_map("周边环境较差，服务的速度慢，态度还可以，价格太高。")
 
