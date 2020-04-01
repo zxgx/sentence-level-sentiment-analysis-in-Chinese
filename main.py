@@ -120,13 +120,13 @@ class Manager(object):
         test_set = self.reader.test_set
         self.tokenizer = self.reader.tokenizer
         self.train_iter = BucketIterator(
-            self.config, train_set, tokenizer, shuffle=True, sort=True
+            self.config, train_set, self.tokenizer, shuffle=True, sort=True
         )
         self.val_iter = BucketIterator(
-            self.config, val_set, tokenizer, shuffle=False, sort=True
+            self.config, val_set, self.tokenizer, shuffle=False, sort=True
         )
         self.test_iter = BucketIterator(
-            self.config, test_set, tokenizer, shuffle=False, sort=True
+            self.config, test_set, self.tokenizer, shuffle=False, sort=True
         )
     
     def train(self, model, optimizer, criterion, train_iter, val_iter):
@@ -219,15 +219,15 @@ class Manager(object):
                     self.tokenizer.pad_token_id, 
                     self.config.freeze
                 ).to(self.config.device)
-            #optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05, lr=2e-5)
-            optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05)
+            optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05, lr=2e-5)
+            #optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05)
             
             it_st = time.time()
             print('='*30, "Iteration: ", (it+1), '='*30)
             val_f1 = self.train(model, optimizer, criterion, self.train_iter, self.val_iter)
             _, _, test_f1 = self.evaluate(model, criterion, self.test_iter)
-            print('Time cost this iteration: %.2fs | VAL f1: %.4f | TEST acc: %.4f, TEST f1: %.4f'%
-                ((time.time()-it_st), val_f1, test_acc, test_f1)
+            print('Time cost this iteration: %.2fs | VAL f1: %.4f | TEST f1: %.4f'%
+                ((time.time()-it_st), val_f1, test_f1)
             )
             if val_f1 > val_max_f1:
                 val_max_f1 = val_f1
@@ -324,16 +324,19 @@ class Manager(object):
         with torch.no_grad():
            pred, att = model(x, length, output_attentions=True)
         print(pred, len(att))
-        for l_no, att_map in enumerate(att):
+        cmap = seaborn.light_palette("navy")
+        for layer_no, att_map in enumerate(att):
             att_map = att_map.cpu().detach().numpy()
-            for row in range(4):
-                fig, axs = plt.subplots(1, 3, figsize=(20, 10))
-                for col in range(3):
-                    draw_attention(att_map[0, row*3+col], tokens, 
-                    tokens if col==0 else [], ax=axs[col], cbar=col==2)
-                plt.title("Bert Layer %d %d-%d attention"%(l_no+1, row*3+1, (row+1)*3))
-                plt.savefig("layer_%d_%d-%d.jpg"%(l_no+1, row*3+1, (row+1)*3))
+            for head_no in range(12):
+                plt.figure(figsize=(20, 10))
+                seaborn.heatmap(
+                    att_map[0, head_no], xticklabels=tokens, yticklabels=tokens,
+                    square=True, cbar=True, cmap=cmap
+                )
+                plt.title("Layer %d Head %d"%(layer_no+1, head_no+1))
+                plt.savefig("layer-%d_head-%d.jpg"%(layer_no+1, head_no+1))
                 plt.show()
+                plt.close()
 
 
 def statistic(dataset):
@@ -353,10 +356,10 @@ if __name__=='__main__':
     m = Manager()
     # tokenizer = m.reader.tokenizer
     # print(len(tokenizer.ids_to_tokens))
-    statistic(m.reader.train_set)
-    statistic(m.reader.val_set)
-    statistic(m.reader.test_set)
- 	# m.run()
-	# m.insight()
-    # m.attention_map("周边环境较差，服务的速度慢，态度还可以，价格太高。")
+    # statistic(m.reader.train_set)
+    # statistic(m.reader.val_set)
+    # statistic(m.reader.test_set)
+    #m.run()
+    #m.insight()
+    m.attention_map("周边环境较差，服务速度慢，态度还可以，价格太高。")
 

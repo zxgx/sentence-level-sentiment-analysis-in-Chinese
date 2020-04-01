@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class RCNN(nn.Module):
-    def __init__(self, embedding, pad_idx, freeze, hidden_dim=256,
+    def __init__(self, embedding, pad_idx, freeze, hidden_dim=512,
                  n_layers=1, output_dim=2, dropout=0):
         super().__init__()
         self.embedding = nn.Embedding.from_pretrained(

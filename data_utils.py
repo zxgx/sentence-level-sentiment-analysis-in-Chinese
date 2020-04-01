@@ -248,7 +248,9 @@ class BucketIterator(object):
             if self.config.is_bert:
                 if self.config.max_len-2 < text_max_len:
                     max_len = self.config.max_len
-                text_max_len = max_len - 2
+                    text_max_len = max_len - 2
+                else:
+                    max_len = text_max_len + 2
             # cnn or rnn
             elif self.config.max_len < max_len:
                 max_len = self.config.max_len
