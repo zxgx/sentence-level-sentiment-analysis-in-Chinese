@@ -321,7 +321,7 @@ class Manager(object):
         for layer_no, att_map in enumerate(att):
             att_map = att_map.cpu().detach().numpy()
             for head_no in range(12):
-                plt.figure(figsize=(10, 10))
+                plt.figure(figsize=(50, 30))
                 seaborn.heatmap(
                     att_map[0, head_no], xticklabels=tokens, yticklabels=tokens,
                     square=True, cbar=True, cmap=cmap
@@ -354,5 +354,5 @@ if __name__=='__main__':
     # statistic(m.reader.test_set)
     #m.run()
     #m.insight()
-    m.attention_map("周边环境较差，服务速度慢，态度还可以，价格太高。")
+    m.attention_map("周边环境较差，服务速度慢，态度还可以")
 
