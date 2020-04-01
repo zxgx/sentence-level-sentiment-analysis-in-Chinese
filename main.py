@@ -10,7 +10,6 @@ import torch.nn as nn
 from sklearn import metrics
 
 import seaborn
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from models import TextCNN, RNN, BERT, Att_RNN, RCNN
@@ -18,6 +17,8 @@ from data_utils import SentDatasetReader, BucketIterator
 
 #import logging
 #logging.basicConfig(level=logging.INFO)
+plt.rcParams['font.sans-serif'] = [ 'AR PL UKai CN' ]
+plt.rcParams['font.family'] = 'AR PL UKai CN'
 
 model_classes = {
     'cnn':TextCNN,
@@ -32,14 +33,6 @@ def str2bool(v):
         return True
     else:
         return False
-
-#mpl.rcParams['font.sans-serif'] = ['SimHei']
-#mpl.rcParams['axes.unicode_minus'] = False
-#seaborn.set(font='SimHei')
-#print(seaborn.axes_style())
-def draw_attention(data, x, y, ax, cbar):
-    seaborn.heatmap(data, xticklabels=x, square=True, yticklabels=y, vmin=0.0, vmax=1.0,
-        cbar=cbar, ax=ax)
 
 class Manager(object):
     '''
@@ -328,7 +321,7 @@ class Manager(object):
         for layer_no, att_map in enumerate(att):
             att_map = att_map.cpu().detach().numpy()
             for head_no in range(12):
-                plt.figure(figsize=(20, 10))
+                plt.figure(figsize=(10, 10))
                 seaborn.heatmap(
                     att_map[0, head_no], xticklabels=tokens, yticklabels=tokens,
                     square=True, cbar=True, cmap=cmap
